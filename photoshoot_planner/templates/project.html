@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Проект: {{ project[1] }}</h2>
+
+<h3 class="mt-4">Добавить кадр</h3>
+<form method="post" enctype="multipart/form-data" action="{{ url_for('add_frame', project_id=project[0]) }}">
+    <input type="text" name="description" class="form-control mb-2" placeholder="Описание кадра" required>
+    <input type="file" name="image" class="form-control mb-2">
+    <button type="submit" class="btn btn-success">Добавить кадр</button>
+</form>
+
+<h3 class="mt-5">Кадры</h3>
+<div class="row">
+    {% for frame in frames %}
+    <div class="col-md-6 mb-4">
+        <div class="card p-3">
+            <strong>{{ frame[2] }}</strong>
+            {% if frame[3] %}
+                <img src="/uploads/{{ frame[3] }}" class="img-fluid mt-2" style="max-height: 300px;">
+            {% else %}
+                <p class="text-muted">Без изображения</p>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

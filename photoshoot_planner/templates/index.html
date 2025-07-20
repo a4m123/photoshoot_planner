@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Проекты</h2>
+<ul class="list-group mb-4">
+    {% for p in projects %}
+        <li class="list-group-item">
+            <a href="{{ url_for('view_project', project_id=p[0]) }}">{{ p[1] }}</a>
+        </li>
+    {% endfor %}
+</ul>
+
+<h3>Создать новый проект</h3>
+<form method="post" action="{{ url_for('create_project') }}">
+    <input type="text" name="name" class="form-control mb-2" placeholder="Название проекта" required>
+    <button type="submit" class="btn btn-primary">Создать</button>
+</form>
+{% endblock %}
