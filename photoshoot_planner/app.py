@@ -21,9 +21,15 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
+
+def get_db_connection():
+    conn = sqlite3.connect(DB_PATH, timeout=10, isolation_level=None)
+    conn.execute('PRAGMA journal_mode=WAL;')  # включаем write-ahead logging
+    return conn
+
 # --- Инициализация базы данных ---
 def init_db():
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db_connection() as conn:
         c = conn.cursor()
         c.execute('''
             CREATE TABLE IF NOT EXISTS user (
@@ -60,20 +66,20 @@ def allowed_file(filename):
 
 @app.route('/')
 def index():
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db_connection() as conn:
         users = conn.execute('SELECT * FROM user').fetchall()
     return render_template('index.html', users=users)
 
 @app.route('/create_user', methods=['POST'])
 def create_user():
     username = request.form['username']
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db_connection() as conn:
         conn.execute('INSERT INTO user (username) VALUES (?)', (username,))
     return redirect(url_for('index'))
 
 @app.route('/user/<int:user_id>')
 def user_projects(user_id):
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db_connection() as conn:
         user = conn.execute('SELECT * FROM user WHERE id=?', (user_id,)).fetchone()
         projects = conn.execute('SELECT * FROM project WHERE user_id=?', (user_id,)).fetchall()
     return render_template('user_projects.html', user=user, projects=projects)
@@ -81,13 +87,13 @@ def user_projects(user_id):
 @app.route('/user/<int:user_id>/create_project', methods=['POST'])
 def create_project(user_id):
     name = request.form['name']
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db_connection() as conn:
         conn.execute('INSERT INTO project (name, user_id) VALUES (?, ?)', (name, user_id))
     return redirect(url_for('user_projects', user_id=user_id))
 
 @app.route('/project/<int:project_id>')
 def view_project(project_id):
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db_connection() as conn:
         project = conn.execute('SELECT * FROM project WHERE id=?', (project_id,)).fetchone()
         frames = conn.execute('SELECT * FROM frame WHERE project_id=?', (project_id,)).fetchall()
     return render_template('project.html', project=project, frames=frames)
@@ -113,13 +119,30 @@ def add_frame(project_id):
             print("Ошибка при сохранении нарисованного эскиза:", e)
     elif file and allowed_file(file.filename):
         filename = secure_filename(file.filename)
-        file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+        original_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
 
-    with sqlite3.connect(DB_PATH) as conn:
+        # Save full-res (shrink to 1280px max)
+        image = Image.open(file)
+        image.thumbnail((1280, 1280), Image.LANCZOS)
+        image.save(original_path)
+
+        # Create and save thumbnail
+        thumb_filename = f"thumb_{filename}"
+        thumbnail_path = os.path.join(app.config['UPLOAD_FOLDER'], thumb_filename)
+        thumb = image.copy()
+        thumb.thumbnail((300, 300), Image.LANCZOS)
+        thumb.save(thumbnail_path)
+        # Save thumbnail path in DB
+    with get_db_connection() as conn:
+        conn.execute('UPDATE frame SET image_path=? WHERE project_id=? AND description=? AND character_name=?',
+                     (thumb_filename, project_id, description, character_name))
+
+    with get_db_connection() as conn:
         conn.execute('''
             INSERT INTO frame (project_id, description, image_path, character_name)
             VALUES (?, ?, ?, ?)''',
             (project_id, description, filename, character_name))
+        conn.commit()
     return redirect(url_for('view_project', project_id=project_id))
 
 @app.route('/uploads/<filename>')
@@ -129,21 +152,37 @@ def uploaded_file(filename):
 @app.route('/project/<int:project_id>/frame/<int:frame_id>/rename', methods=['POST'])
 def rename_frame(project_id, frame_id):
     new_desc = request.form['new_description']
-    with sqlite3.connect(DB_PATH) as conn:
+    with get_db_connection() as conn:
         conn.execute('UPDATE frame SET description=? WHERE id=?', (new_desc, frame_id))
     return redirect(url_for('view_project', project_id=project_id))
 
-@app.route('/project/<int:project_id>/frame/<int:frame_id>/delete', methods=['POST'])
-def delete_frame(project_id, frame_id):
-    with sqlite3.connect(DB_PATH) as conn:
-        cur = conn.cursor()
-        image_path = cur.execute('SELECT image_path FROM frame WHERE id=?', (frame_id,)).fetchone()
-        if image_path and image_path[0]:
-            image_file = os.path.join(app.config['UPLOAD_FOLDER'], image_path[0])
-            if os.path.exists(image_file):
-                os.remove(image_file)
-        cur.execute('DELETE FROM frame WHERE id=?', (frame_id,))
-    return redirect(url_for('view_project', project_id=project_id))
+@app.route('/delete_frame/<int:frame_id>', methods=['POST'])
+def delete_frame(frame_id):
+    with sqlite3.connect(DB_PATH, timeout=10) as conn:
+        c = conn.cursor()
+        # получаем путь к изображению
+        c.execute('SELECT image_path FROM frame WHERE id=?', (frame_id,))
+        row = c.fetchone()
+        if row:
+            filename = row[0]
+            if filename:
+                full_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                thumb_path = os.path.join(app.config['UPLOAD_FOLDER'], 'thumb_' + filename)
+                try:
+                    if os.path.exists(full_path):
+                        os.remove(full_path)
+                    if os.path.exists(thumb_path):
+                        os.remove(thumb_path)
+                except Exception as e:
+                    print(f"Error deleting files: {e}")
+
+        # удаляем кадр из базы
+        c.execute('DELETE FROM frame WHERE id=?', (frame_id,))
+        conn.commit()
+
+    return redirect(request.referrer or url_for('index'))
+
+
 
 # --- Запуск сервера ---
 if __name__ == '__main__':

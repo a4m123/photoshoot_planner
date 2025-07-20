@@ -88,28 +88,38 @@ drawGrid();
 <h3 class="mt-5">Кадры</h3>
 <div class="row">
     {% for frame in frames %}
-        <div class="col-md-6 mb-4">
-    <div class="card p-3">
-        <form method="post" action="{{ url_for('rename_frame', project_id=project[0], frame_id=frame[0]) }}" class="mb-2">
-            <input type="text" name="new_description" value="{{ frame[2] }}" class="form-control mb-2">
-            <button type="submit" class="btn btn-sm btn-outline-secondary">Переименовать</button>
-        </form>
+        <div class="col-md-3 mb-4">
+        <div class="card h-100">
+            <!-- Thumbnail triggers modal -->
+            <a href="#" data-bs-toggle="modal" data-bs-target="#modal{{ frame[0] }}">
+            <img src="/uploads/thumb_{{ frame[3] }}" class="card-img-top" alt="Sketch">
+            </a>
 
-        {% if frame[4] %}
-            <p><strong>Персонаж:</strong> {{ frame[4] }}</p>
-        {% endif %}
+            <div class="card-body">
+            <h5 class="card-title">{{ frame[4] or "Без персонажа" }}</h5>
+            <p class="card-text">{{ frame[2] }}</p>
 
-        {% if frame[3] %}
-            <img src="{{ url_for('uploaded_file', filename=frame[3]) }}" class="img-fluid mt-2" style="max-height: 300px;">
-        {% else %}
-            <p class="text-muted">Нет изображения</p>
-        {% endif %}
+            <!-- Delete button -->
+            <form method="POST" action="{{ url_for('delete_frame', frame_id=frame[0], project_id=project[0]) }}">
+                <button type="submit" class="btn btn-sm btn-danger">🗑 Удалить</button>
+            </form>
+            </div>
+        </div>
+        </div>
 
-        <form method="post" action="{{ url_for('delete_frame', project_id=project[0], frame_id=frame[0]) }}" onsubmit="return confirm('Удалить этот кадр?')">
-            <button class="btn btn-sm btn-danger mt-2">Удалить</button>
-        </form>
-    </div>
-</div>
+        <!-- Modal for full image -->
+        <div class="modal fade" id="modal{{ frame[0] }}" tabindex="-1" aria-labelledby="modalLabel{{ frame[0] }}" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+            <div class="modal-body">
+                <img src="/uploads/{{ frame[3] }}" class="img-fluid" alt="Full image">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+            </div>
+            </div>
+        </div>
+        </div>
 
     {% endfor %}
 </div>

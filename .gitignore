@@ -211,3 +211,6 @@ __marimo__/
 *.png
 *.jpeg
 *.gif
+*.db
+*.db-shm
+*.db-wal
