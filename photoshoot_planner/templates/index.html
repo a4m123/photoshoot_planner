@@ -1,17 +1,17 @@
 {% extends 'base.html' %}
 {% block content %}
-<h2>Проекты</h2>
+<h2>Пользователи</h2>
 <ul class="list-group mb-4">
-    {% for p in projects %}
+    {% for user in users %}
         <li class="list-group-item">
-            <a href="{{ url_for('view_project', project_id=p[0]) }}">{{ p[1] }}</a>
+            <a href="{{ url_for('user_projects', user_id=user[0]) }}">{{ user[1] }}</a>
         </li>
     {% endfor %}
 </ul>
 
-<h3>Создать новый проект</h3>
-<form method="post" action="{{ url_for('create_project') }}">
-    <input type="text" name="name" class="form-control mb-2" placeholder="Название проекта" required>
+<h3>Создать нового пользователя</h3>
+<form method="post" action="{{ url_for('create_user') }}">
+    <input type="text" name="username" class="form-control mb-2" placeholder="Имя пользователя" required>
     <button type="submit" class="btn btn-primary">Создать</button>
 </form>
 {% endblock %}
