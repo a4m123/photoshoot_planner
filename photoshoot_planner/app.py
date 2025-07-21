@@ -20,6 +20,8 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 # --- Flask App ---
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['THUMBNAIL_FOLDER'] = os.path.join(BASE_DIR, 'uploads', 'thumbs')
+os.makedirs(app.config['THUMBNAIL_FOLDER'], exist_ok=True)
 
 
 def get_db_connection():
@@ -52,6 +54,7 @@ def init_db():
                 description TEXT,
                 image_path TEXT,
                 character_name TEXT,
+                thumbnail_path TEXT,
                 FOREIGN KEY(project_id) REFERENCES project(id)
             )
         ''')
@@ -104,48 +107,61 @@ def add_frame(project_id):
     character_name = request.form.get('character_name')
     file = request.files.get('image')
     image_data = request.form.get('image_data')
-    filename = None
+    image_filename = None
+    thumb_filename = None
 
     if image_data:
+        # Скетч с canvas
         try:
             header, encoded = image_data.split(',', 1)
             data = base64.b64decode(encoded)
             image = Image.open(BytesIO(data))
+
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            filename = f'sketch_{timestamp}.png'
-            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            image_filename = f'sketch_{timestamp}.png'
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], image_filename)
             image.save(filepath)
+
+            # Миниатюра
+            thumb_filename = f"thumb_{image_filename}"
+            thumb_path = os.path.join(app.config['THUMBNAIL_FOLDER'], thumb_filename)
+            image.thumbnail((300, 300), Image.LANCZOS)
+            image.save(thumb_path)
+
         except Exception as e:
             print("Ошибка при сохранении нарисованного эскиза:", e)
-    elif file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
-        original_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
 
-        # Save full-res (shrink to 1280px max)
+    elif file and allowed_file(file.filename):
+        # Загруженное изображение
+        filename = secure_filename(file.filename)
+        name, ext = os.path.splitext(filename)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        image_filename = f"{name}_{timestamp}{ext}"
+
+        original_path = os.path.join(app.config['UPLOAD_FOLDER'], image_filename)
+
         image = Image.open(file)
         image.thumbnail((1280, 1280), Image.LANCZOS)
         image.save(original_path)
 
-        # Create and save thumbnail
-        thumb_filename = f"thumb_{filename}"
-        thumbnail_path = os.path.join(app.config['UPLOAD_FOLDER'], thumb_filename)
+        # Миниатюра
+        thumb_filename = f"thumb_{image_filename}"
+        thumb_path = os.path.join(app.config['THUMBNAIL_FOLDER'], thumb_filename)
         thumb = image.copy()
         thumb.thumbnail((300, 300), Image.LANCZOS)
-        thumb.save(thumbnail_path)
-        # Save thumbnail path in DB
-    with get_db_connection() as conn:
-        conn.execute('UPDATE frame SET image_path=? WHERE project_id=? AND description=? AND character_name=?',
-                     (thumb_filename, project_id, description, character_name))
+        thumb.save(thumb_path)
 
+    # Сохраняем в БД
     with get_db_connection() as conn:
         conn.execute('''
-            INSERT INTO frame (project_id, description, image_path, character_name)
-            VALUES (?, ?, ?, ?)''',
-            (project_id, description, filename, character_name))
+            INSERT INTO frame (project_id, description, image_path, character_name, thumbnail_path)
+            VALUES (?, ?, ?, ?, ?)''',
+            (project_id, description, image_filename, character_name, thumb_filename))
         conn.commit()
+
     return redirect(url_for('view_project', project_id=project_id))
 
-@app.route('/uploads/<filename>')
+@app.route('/uploads/<path:filename>')
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
@@ -182,6 +198,20 @@ def delete_frame(frame_id):
 
     return redirect(request.referrer or url_for('index'))
 
+@app.route('/project/<int:project_id>/edit_frame/<int:frame_id>', methods=['POST'])
+def edit_frame(project_id, frame_id):
+    character_name = request.form.get('character_name')
+    description = request.form.get('description')
+
+    with get_db_connection() as conn:
+        conn.execute('''
+            UPDATE frame
+            SET character_name = ?, description = ?
+            WHERE id = ? AND project_id = ?
+        ''', (character_name, description, frame_id, project_id))
+        conn.commit()
+
+    return redirect(url_for('view_project', project_id=project_id))
 
 
 # --- Запуск сервера ---
