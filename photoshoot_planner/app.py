@@ -6,7 +6,7 @@ from flask import Flask, render_template, request, redirect, url_for
 from werkzeug.utils import secure_filename
 from PIL import Image
 from datetime import datetime
-from flask import send_from_directory
+from flask import send_from_directory, jsonify
 
 
 # --- Пути хранения ---
@@ -49,14 +49,16 @@ def init_db():
         ''')
         c.execute('''
             CREATE TABLE IF NOT EXISTS frame (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                project_id INTEGER,
-                description TEXT,
-                image_path TEXT,
-                character_name TEXT,
-                thumbnail_path TEXT,
-                FOREIGN KEY(project_id) REFERENCES project(id)
-            )
+            id INTEGER PRIMARY KEY,
+            project_id INTEGER,
+            description TEXT,
+            image_path TEXT,
+            character_name TEXT,
+            shoot_time TEXT,
+            location TEXT,
+            position INTEGER DEFAULT 0,
+            FOREIGN KEY(project_id) REFERENCES project(id)
+        );
         ''')
 
 init_db()
@@ -98,7 +100,7 @@ def create_project(user_id):
 def view_project(project_id):
     with get_db_connection() as conn:
         project = conn.execute('SELECT * FROM project WHERE id=?', (project_id,)).fetchone()
-        frames = conn.execute('SELECT * FROM frame WHERE project_id=?', (project_id,)).fetchall()
+        frames = conn.execute('SELECT * FROM frame WHERE project_id=? ORDER BY position', (project_id,)).fetchall()
     return render_template('project.html', project=project, frames=frames)
 
 @app.route('/project/<int:project_id>/add_frame', methods=['POST'])
@@ -107,6 +109,8 @@ def add_frame(project_id):
     character_name = request.form.get('character_name')
     file = request.files.get('image')
     image_data = request.form.get('image_data')
+    shoot_time = request.form.get('shoot_time')
+    location = request.form.get('location')
     image_filename = None
     thumb_filename = None
 
@@ -136,7 +140,7 @@ def add_frame(project_id):
         filename = secure_filename(file.filename)
         name, ext = os.path.splitext(filename)
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        image_filename = f"{name}_{timestamp}{ext}"
+        image_filename = f"{name}{ext}"
 
         original_path = os.path.join(app.config['UPLOAD_FOLDER'], image_filename)
 
@@ -154,9 +158,9 @@ def add_frame(project_id):
     # Сохраняем в БД
     with get_db_connection() as conn:
         conn.execute('''
-            INSERT INTO frame (project_id, description, image_path, character_name, thumbnail_path)
-            VALUES (?, ?, ?, ?, ?)''',
-            (project_id, description, image_filename, character_name, thumb_filename))
+            INSERT INTO frame (project_id, description, image_path, character_name, shoot_time, location)
+            VALUES (?, ?, ?, ?, ?, ?)''',
+            (project_id, description, image_filename, character_name, shoot_time, location))
         conn.commit()
 
     return redirect(url_for('view_project', project_id=project_id))
@@ -213,6 +217,46 @@ def edit_frame(project_id, frame_id):
 
     return redirect(url_for('view_project', project_id=project_id))
 
+@app.route('/project/<int:project_id>/edit', methods=['GET', 'POST'])
+def edit_project(project_id):
+    conn = get_db_connection()
+    project = conn.execute('SELECT * FROM project WHERE id = ?', (project_id,)).fetchone()
+    conn.close()
+
+    if request.method == 'POST':
+        new_name = request.form['name']
+        conn = get_db_connection()
+        conn.execute('UPDATE project SET name = ? WHERE id = ?', (new_name, project_id))
+        conn.commit()
+        conn.close()
+        return redirect(url_for('view_project', project_id=project_id))
+
+    return render_template('edit_project.html', project=project)
+
+@app.route('/project/<int:project_id>/delete', methods=['POST'])
+def delete_project(project_id):
+    conn = get_db_connection()
+    # Optionally delete related frames
+    conn.execute('DELETE FROM frame WHERE project_id = ?', (project_id,))
+    conn.execute('DELETE FROM project WHERE id = ?', (project_id,))
+    conn.commit()
+    conn.close()
+    return redirect(url_for('index'))
+
+@app.route('/update_frame_order', methods=['POST'])
+def update_frame_order():
+    data = request.get_json()
+    new_order = data.get('order', [])
+    if not new_order:
+        return jsonify({'error': 'Invalid data'}), 400
+
+    conn = get_db_connection()
+    for idx, frame_id in enumerate(new_order):
+        conn.execute("UPDATE frame SET position = ? WHERE id = ?", (idx, frame_id))
+    conn.commit()
+    conn.close()
+
+    return jsonify({'status': 'success'})
 
 # --- Запуск сервера ---
 if __name__ == '__main__':

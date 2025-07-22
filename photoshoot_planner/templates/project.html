@@ -1,13 +1,17 @@
 {% extends 'base.html' %}
 {% block content %}
 <h2>Проект: {{ project[1] }}</h2>
+<a href="{{ url_for('user_projects', user_id=project[2]) }}" class="btn btn-secondary mb-3">Назад к проектам пользователя</a>
 
 <h3 class="mt-4">Добавить кадр</h3>
 <form method="post" enctype="multipart/form-data" action="{{ url_for('add_frame', project_id=project[0]) }}">
     <input type="text" name="description" class="form-control mb-2" placeholder="Описание кадра" required>
     <input type="file" name="image" class="form-control mb-2">
-    <button type="submit" class="btn btn-success">Добавить кадр</button>
     <input type="text" name="character_name" class="form-control mb-2" placeholder="Имя персонажа">
+    <input type="datetime-local" name="shoot_time" class="form-control mb-2">
+    <input type="text" name="location" placeholder="Локация (адрес)" class="form-control mb-2">
+
+    <button type="submit" class="btn btn-success">Добавить кадр</button>
 </form>
 
 <h4 class="mt-5">Или нарисовать эскиз:</h4>
@@ -197,18 +201,20 @@ drawGrid();
 </script>
 
 <h3 class="mt-5">Кадры</h3>
-<div class="row">
+<div id="frame-container" class="row">
     {% for frame in frames %}
-        <div class="col-md-3 mb-4">
+        <div class="col-md-3 mb-4 frame-card" data-id="{{ frame[0] }}" draggable="true">
             <div class="card h-100">
                 <!-- Thumbnail triggers modal -->
-                <a href="#" data-bs-toggle="modal" data-bs-target="#modal{{ frame[0] }}">
+                <a href="#" data-bs-toggle="modal" data-bs-target="#modal{{ frame[0] }}" draggable="true">
                     <img src="/uploads/thumbs/thumb_{{ frame[3] }}" class="card-img-top" alt="Sketch">
                 </a>
 
                 <div class="card-body">
                 <h5 class="card-title">{{ frame[4] or "Без персонажа" }}</h5>
                 <p class="card-text">{{ frame[2] }}</p>
+                <p><strong>Время:</strong> {{ frame[5] or 'Не указано' }}</p>
+                <p><strong>Локация:</strong> {{ frame[6] or 'Не указана' }}</p>
 
                 <!-- Delete button -->
                 <form method="POST" action="{{ url_for('delete_frame', frame_id=frame[0], project_id=project[0]) }}">
@@ -266,4 +272,48 @@ drawGrid();
 
     {% endfor %}
 </div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    const container = document.getElementById("frame-container");
+    let dragged;
+
+    document.querySelectorAll(".frame-card").forEach(card => {
+        card.addEventListener("dragstart", e => {
+            dragged = card;
+            card.style.opacity = 0.5;
+        });
+
+        card.addEventListener("dragend", e => {
+            card.style.opacity = "";
+        });
+
+        card.addEventListener("dragover", e => e.preventDefault());
+
+        card.addEventListener("drop", e => {
+            e.preventDefault();
+            if (dragged && dragged !== card) {
+                container.insertBefore(dragged, card);
+                saveNewOrder();
+            }
+        });
+    });
+
+    function saveNewOrder() {
+        const ids = Array.from(document.querySelectorAll(".frame-card")).map(c => c.dataset.id);
+        fetch("/update_frame_order", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ order: ids })
+        }).then(res => {
+            if (!res.ok) alert("Ошибка при сохранении порядка");
+        });
+    }
+});
+</script>
+
+
 {% endblock %}
+

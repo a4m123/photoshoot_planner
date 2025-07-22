@@ -1,18 +1,33 @@
 {% extends 'base.html' %}
-{% block content %}
-<h2>Проекты пользователя: {{ user[1] }}</h2>
 
-<ul class="list-group mb-4">
+{% block content %}
+<h2>Проекты пользователя {{ user[1] }}</h2>
+
+{% if projects %}
+  <div class="row">
     {% for project in projects %}
-        <li class="list-group-item">
-            <a href="{{ url_for('view_project', project_id=project[0]) }}">{{ project[1] }}</a>
-        </li>
+      <div class="col-md-4 mb-3">
+        <div class="card h-100">
+          <div class="card-body">
+            <h5 class="card-title">{{ project[1] }}</h5>
+            <a href="{{ url_for('view_project', project_id=project[0]) }}" class="btn btn-primary btn-sm">Открыть</a>
+            <a href="{{ url_for('edit_project', project_id=project[0]) }}" class="btn btn-outline-secondary btn-sm">✏️</a>
+            <form action="{{ url_for('delete_project', project_id=project[0]) }}" method="POST" style="display:inline;" onsubmit="return confirm('Удалить проект?');">
+              <button type="submit" class="btn btn-outline-danger btn-sm">🗑</button>
+            </form>
+          </div>
+        </div>
+      </div>
     {% endfor %}
-</ul>
+  </div>
+{% else %}
+  <p>Нет проектов.</p>
+{% endif %}
 
 <h3>Создать новый проект</h3>
 <form method="post" action="{{ url_for('create_project', user_id=user[0]) }}">
     <input type="text" name="name" class="form-control mb-2" placeholder="Название проекта" required>
     <button type="submit" class="btn btn-success">Создать проект</button>
 </form>
+
 {% endblock %}
