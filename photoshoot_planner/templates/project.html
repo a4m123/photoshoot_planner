@@ -2,6 +2,10 @@
 {% block content %}
 <h2>Проект: {{ project[1] }}</h2>
 <a href="{{ url_for('user_projects', user_id=project[2]) }}" class="btn btn-secondary mb-3">Назад к проектам пользователя</a>
+<br>
+<a href="{{ url_for('export_project_pdf', project_id=project[0]) }}" class="btn btn-outline-primary mt-3">
+    📄 Экспортировать PDF-раскадровку
+</a>
 
 <h3 class="mt-4">Добавить кадр</h3>
 <form method="post" enctype="multipart/form-data" action="{{ url_for('add_frame', project_id=project[0]) }}">

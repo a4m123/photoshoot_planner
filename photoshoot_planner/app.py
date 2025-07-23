@@ -1,35 +1,50 @@
+
+# --- Импорты стандартных библиотек ---
 import os
 import sqlite3
 import base64
 from io import BytesIO
-from flask import Flask, render_template, request, redirect, url_for
+from datetime import datetime
+
+# --- Импорты сторонних библиотек ---
+from flask import Flask, render_template, request, redirect, url_for, send_from_directory, jsonify, send_file
 from werkzeug.utils import secure_filename
 from PIL import Image
-from datetime import datetime
-from flask import send_from_directory, jsonify
 
+# --- Импорты reportlab ---
+from reportlab.lib.pagesizes import A4, letter
+from reportlab.pdfgen import canvas
+from reportlab.lib.units import cm, inch
+from reportlab.platypus import Image as RLImage, Paragraph, SimpleDocTemplate, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_LEFT
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.platypus import KeepTogether
+
+# --- Регистрация шрифта ---
+pdfmetrics.registerFont(TTFont('DejaVuSans', 'photoshoot_planner/static/fonts/DejaVuSans.ttf'))
 
 # --- Пути хранения ---
 BASE_DIR = os.path.expanduser('~/photoshoot_planner')
 UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
+THUMBNAIL_FOLDER = os.path.join(UPLOAD_FOLDER, 'thumbs')
 DB_PATH = os.path.join(BASE_DIR, 'photoshoot.db')
-
 os.makedirs(BASE_DIR, exist_ok=True)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(THUMBNAIL_FOLDER, exist_ok=True)
 
-# --- Flask App ---
+# --- Flask app ---
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-app.config['THUMBNAIL_FOLDER'] = os.path.join(BASE_DIR, 'uploads', 'thumbs')
-os.makedirs(app.config['THUMBNAIL_FOLDER'], exist_ok=True)
+app.config['THUMBNAIL_FOLDER'] = THUMBNAIL_FOLDER
 
 
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH, timeout=10, isolation_level=None)
-    conn.execute('PRAGMA journal_mode=WAL;')  # включаем write-ahead logging
+    conn.execute('PRAGMA journal_mode=WAL;')
     return conn
 
-# --- Инициализация базы данных ---
 def init_db():
     with get_db_connection() as conn:
         c = conn.cursor()
@@ -63,11 +78,16 @@ def init_db():
 
 init_db()
 
-# --- Вспомогательные функции ---
+
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg', 'gif'}
 
-# --- Маршруты ---
+
+# --- Вспомогательная функция для создания миниатюры ---
+def create_thumbnail(image, thumb_path, size=(300, 300)):
+    thumb = image.copy()
+    thumb.thumbnail(size, Image.LANCZOS)
+    thumb.save(thumb_path)
 
 @app.route('/')
 def index():
@@ -114,8 +134,8 @@ def add_frame(project_id):
     image_filename = None
     thumb_filename = None
 
+
     if image_data:
-        # Скетч с canvas
         try:
             header, encoded = image_data.split(',', 1)
             data = base64.b64decode(encoded)
@@ -126,17 +146,14 @@ def add_frame(project_id):
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], image_filename)
             image.save(filepath)
 
-            # Миниатюра
             thumb_filename = f"thumb_{image_filename}"
             thumb_path = os.path.join(app.config['THUMBNAIL_FOLDER'], thumb_filename)
-            image.thumbnail((300, 300), Image.LANCZOS)
-            image.save(thumb_path)
+            create_thumbnail(image, thumb_path)
 
         except Exception as e:
             print("Ошибка при сохранении нарисованного эскиза:", e)
 
     elif file and allowed_file(file.filename):
-        # Загруженное изображение
         filename = secure_filename(file.filename)
         name, ext = os.path.splitext(filename)
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -148,14 +165,10 @@ def add_frame(project_id):
         image.thumbnail((1280, 1280), Image.LANCZOS)
         image.save(original_path)
 
-        # Миниатюра
         thumb_filename = f"thumb_{image_filename}"
         thumb_path = os.path.join(app.config['THUMBNAIL_FOLDER'], thumb_filename)
-        thumb = image.copy()
-        thumb.thumbnail((300, 300), Image.LANCZOS)
-        thumb.save(thumb_path)
+        create_thumbnail(image, thumb_path)
 
-    # Сохраняем в БД
     with get_db_connection() as conn:
         conn.execute('''
             INSERT INTO frame (project_id, description, image_path, character_name, shoot_time, location)
@@ -180,7 +193,6 @@ def rename_frame(project_id, frame_id):
 def delete_frame(frame_id):
     with sqlite3.connect(DB_PATH, timeout=10) as conn:
         c = conn.cursor()
-        # получаем путь к изображению
         c.execute('SELECT image_path FROM frame WHERE id=?', (frame_id,))
         row = c.fetchone()
         if row:
@@ -196,7 +208,6 @@ def delete_frame(frame_id):
                 except Exception as e:
                     print(f"Error deleting files: {e}")
 
-        # удаляем кадр из базы
         c.execute('DELETE FROM frame WHERE id=?', (frame_id,))
         conn.commit()
 
@@ -236,7 +247,6 @@ def edit_project(project_id):
 @app.route('/project/<int:project_id>/delete', methods=['POST'])
 def delete_project(project_id):
     conn = get_db_connection()
-    # Optionally delete related frames
     conn.execute('DELETE FROM frame WHERE project_id = ?', (project_id,))
     conn.execute('DELETE FROM project WHERE id = ?', (project_id,))
     conn.commit()
@@ -258,6 +268,66 @@ def update_frame_order():
 
     return jsonify({'status': 'success'})
 
-# --- Запуск сервера ---
+def fit_image(orig_width, orig_height, max_width, max_height):
+    ratio = min(max_width / orig_width, max_height / orig_height)
+    return orig_width * ratio, orig_height * ratio
+
+@app.route('/project/<int:project_id>/export_pdf')
+def export_project_pdf(project_id):
+    conn = get_db_connection()
+    project = conn.execute('SELECT * FROM project WHERE id = ?', (project_id,)).fetchone()
+    frames = conn.execute('SELECT * FROM frame WHERE project_id = ? ORDER BY position', (project_id,)).fetchall()
+    conn.close()
+
+    if not project:
+        return "Проект не найден", 404
+
+    pdf_buffer = BytesIO()
+    doc = SimpleDocTemplate(pdf_buffer, pagesize=A4)
+    elements = []
+
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name='Cyrillic', fontName='DejaVuSans', fontSize=12, leading=15, alignment=TA_LEFT))
+    styles.add(ParagraphStyle(name='CyrillicTitle', fontName='DejaVuSans', fontSize=16, leading=20, alignment=TA_LEFT))
+
+    elements.append(Paragraph(f"<b>Проект:</b> {project[1]}", styles['CyrillicTitle']))
+    elements.append(Spacer(1, 12))
+
+    for frame in frames:
+        description = frame[2]
+        character = frame[4] or ''
+        shoot_time = frame[5] or ''
+        location = frame[6] or ''
+        image_path = os.path.join(app.config['UPLOAD_FOLDER'], frame[3])
+
+        frame_block = []
+        frame_block.append(Paragraph(f"<b>Кадр:</b> {description}", styles['Cyrillic']))
+        if character:
+            frame_block.append(Paragraph(f"<b>Персонаж:</b> {character}", styles['Cyrillic']))
+        if shoot_time:
+            frame_block.append(Paragraph(f"<b>Время:</b> {shoot_time}", styles['Cyrillic']))
+        if location:
+            frame_block.append(Paragraph(f"<b>Локация:</b> {location}", styles['Cyrillic']))
+
+        if os.path.exists(image_path):
+            try:
+                img = RLImage(image_path)
+                max_width = 7 * inch
+                max_height = 7 * inch
+                img.drawWidth, img.drawHeight = fit_image(img.imageWidth, img.imageHeight, max_width, max_height)
+                frame_block.append(Spacer(1, 6))
+                frame_block.append(img)
+            except Exception as e:
+                frame_block.append(Paragraph(f"[Ошибка изображения: {e}]", styles['Cyrillic']))
+        frame_block.append(Spacer(1, 24))
+
+        elements.append(KeepTogether(frame_block))
+
+    doc.build(elements)
+    pdf_buffer.seek(0)
+
+    return send_file(pdf_buffer, as_attachment=True, download_name='project_storyboard.pdf', mimetype='application/pdf')
+
+
 if __name__ == '__main__':
     app.run(debug=True)
