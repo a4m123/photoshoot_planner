@@ -328,6 +328,9 @@ def export_project_pdf(project_id):
 
     return send_file(pdf_buffer, as_attachment=True, download_name='project_storyboard.pdf', mimetype='application/pdf')
 
+@app.route('/offline.html')
+def offline():
+    return render_template('offline.html')
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, port=5005, host='0.0.0.0')
