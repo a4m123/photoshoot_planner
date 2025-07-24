@@ -3,8 +3,17 @@
 <h2>Пользователи</h2>
 <ul class="list-group mb-4">
     {% for user in users %}
-        <li class="list-group-item">
-            <a href="{{ url_for('user_projects', user_id=user[0]) }}">{{ user[1] }}</a>
+        <li class="list-group-item d-flex align-items-center justify-content-between">
+            <div>
+                <a href="{{ url_for('user_projects', user_id=user[0]) }}">{{ user[1] }}</a>
+            </div>
+            <form method="post" action="{{ url_for('edit_user', user_id=user[0]) }}" class="d-inline-flex" style="gap:4px;">
+                <input type="text" name="new_username" value="{{ user[1] }}" class="form-control form-control-sm" style="width:120px;display:inline-block;">
+                <button type="submit" class="btn btn-sm btn-secondary">✎</button>
+            </form>
+            <form method="post" action="{{ url_for('delete_user', user_id=user[0]) }}" class="d-inline">
+                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Удалить пользователя и все его проекты?')">🗑</button>
+            </form>
         </li>
     {% endfor %}
 </ul>

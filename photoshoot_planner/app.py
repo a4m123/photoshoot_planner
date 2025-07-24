@@ -1,4 +1,5 @@
 
+
 # --- Импорты стандартных библиотек ---
 import os
 import sqlite3
@@ -332,5 +333,26 @@ def export_project_pdf(project_id):
 def offline():
     return render_template('offline.html')
 
+# --- Редактирование имени пользователя ---
+@app.route('/user/<int:user_id>/edit', methods=['POST'])
+def edit_user(user_id):
+    new_username = request.form.get('new_username')
+    if new_username:
+        with get_db_connection() as conn:
+            conn.execute('UPDATE user SET username = ? WHERE id = ?', (new_username, user_id))
+    return redirect(url_for('index'))
+
+# --- Удаление пользователя ---
+@app.route('/user/<int:user_id>/delete', methods=['POST'])
+def delete_user(user_id):
+    with get_db_connection() as conn:
+        # Удаляем проекты и кадры пользователя
+        projects = conn.execute('SELECT id FROM project WHERE user_id = ?', (user_id,)).fetchall()
+        for project in projects:
+            conn.execute('DELETE FROM frame WHERE project_id = ?', (project[0],))
+        conn.execute('DELETE FROM project WHERE user_id = ?', (user_id,))
+        conn.execute('DELETE FROM user WHERE id = ?', (user_id,))
+    return redirect(url_for('index'))
+
 if __name__ == '__main__':
-    app.run(debug=True, port=5005, host='0.0.0.0')
+    app.run(debug=True, port=5005, host='127.0.0.1')
