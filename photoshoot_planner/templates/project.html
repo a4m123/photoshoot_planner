@@ -256,14 +256,27 @@ drawGrid();
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
                 </div>
                 <div class="modal-body">
-                <div class="mb-3">
-                    <label class="form-label">Имя персонажа</label>
-                    <input type="text" name="character_name" class="form-control" value="{{ frame[4] }}">
-                </div>
-                <div class="mb-3">
-                    <label class="form-label">Описание</label>
-                    <textarea name="description" class="form-control" rows="3">{{ frame[2] }}</textarea>
-                </div>
+                    <div class="mb-3">
+                        <label class="form-label">Имя персонажа</label>
+                        <input type="text" name="character_name" class="form-control" value="{{ frame[4] }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Описание</label>
+                        <textarea name="description" class="form-control" rows="3">{{ frame[2] }}</textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Время съемки</label>
+                        <input type="datetime-local" name="shoot_time" class="form-control" value="{{ frame[5] }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Локация</label>
+                        <input type="text" name="location" class="form-control" value="{{ frame[6] }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Изображение</label>
+                        <input type="file" name="image" class="form-control">
+                        <small class="form-text text-muted">Оставьте пустым, если не хотите менять изображение</small>
+                    </div>
                 </div>
                 <div class="modal-footer">
                 <button type="submit" class="btn btn-primary">💾 Сохранить</button>

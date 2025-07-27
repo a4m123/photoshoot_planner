@@ -218,13 +218,15 @@ def delete_frame(frame_id):
 def edit_frame(project_id, frame_id):
     character_name = request.form.get('character_name')
     description = request.form.get('description')
+    shoot_time = request.form.get('shoot_time')
+    location = request.form.get('location') 
 
     with get_db_connection() as conn:
         conn.execute('''
             UPDATE frame
-            SET character_name = ?, description = ?
+            SET character_name = ?, description = ?, shoot_time = ?, location = ?
             WHERE id = ? AND project_id = ?
-        ''', (character_name, description, frame_id, project_id))
+        ''', (character_name, description, shoot_time, location, frame_id, project_id))
         conn.commit()
 
     return redirect(url_for('view_project', project_id=project_id))
@@ -355,4 +357,4 @@ def delete_user(user_id):
     return redirect(url_for('index'))
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5005, host='127.0.0.1')
+    app.run(debug=True, port=5005, host='0.0.0.0')
