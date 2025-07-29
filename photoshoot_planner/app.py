@@ -357,4 +357,4 @@ def delete_user(user_id):
     return redirect(url_for('index'))
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5005, host='0.0.0.0')
+    app.run(debug=True, port=5010, host='0.0.0.0')
