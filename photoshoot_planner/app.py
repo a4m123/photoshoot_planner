@@ -219,14 +219,82 @@ def edit_frame(project_id, frame_id):
     character_name = request.form.get('character_name')
     description = request.form.get('description')
     shoot_time = request.form.get('shoot_time')
-    location = request.form.get('location') 
-
+    location = request.form.get('location')
+    file = request.files.get('image')
+    image_data = request.form.get('image_data')
+    new_image_filename = None
+    
     with get_db_connection() as conn:
-        conn.execute('''
-            UPDATE frame
-            SET character_name = ?, description = ?, shoot_time = ?, location = ?
-            WHERE id = ? AND project_id = ?
-        ''', (character_name, description, shoot_time, location, frame_id, project_id))
+        current_frame = conn.execute('SELECT image_path FROM frame WHERE id = ?', (frame_id,)).fetchone()
+        current_image_path = current_frame[0] if current_frame else None
+        
+        if image_data:
+            try:
+                if current_image_path:
+                    old_full_path = os.path.join(app.config['UPLOAD_FOLDER'], current_image_path)
+                    old_thumb_path = os.path.join(app.config['THUMBNAIL_FOLDER'], f"thumb_{current_image_path}")
+                    if os.path.exists(old_full_path):
+                        os.remove(old_full_path)
+                    if os.path.exists(old_thumb_path):
+                        os.remove(old_thumb_path)
+                
+                header, encoded = image_data.split(',', 1)
+                data = base64.b64decode(encoded)
+                image = Image.open(BytesIO(data))
+
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                new_image_filename = f'sketch_{timestamp}.png'
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], new_image_filename)
+                image.save(filepath)
+
+                thumb_filename = f"thumb_{new_image_filename}"
+                thumb_path = os.path.join(app.config['THUMBNAIL_FOLDER'], thumb_filename)
+                create_thumbnail(image, thumb_path)
+
+            except Exception as e:
+                print("Ошибка при сохранении нового эскиза:", e)
+
+        elif file and allowed_file(file.filename):
+            try:
+                if current_image_path:
+                    old_full_path = os.path.join(app.config['UPLOAD_FOLDER'], current_image_path)
+                    old_thumb_path = os.path.join(app.config['THUMBNAIL_FOLDER'], f"thumb_{current_image_path}")
+                    if os.path.exists(old_full_path):
+                        os.remove(old_full_path)
+                    if os.path.exists(old_thumb_path):
+                        os.remove(old_thumb_path)
+                
+                filename = secure_filename(file.filename)
+                name, ext = os.path.splitext(filename)
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                new_image_filename = f"{name}_{timestamp}{ext}"
+
+                original_path = os.path.join(app.config['UPLOAD_FOLDER'], new_image_filename)
+
+                image = Image.open(file)
+                image.thumbnail((1280, 1280), Image.LANCZOS)
+                image.save(original_path)
+
+                thumb_filename = f"thumb_{new_image_filename}"
+                thumb_path = os.path.join(app.config['THUMBNAIL_FOLDER'], thumb_filename)
+                create_thumbnail(image, thumb_path)
+
+            except Exception as e:
+                print("Ошибка при сохранении нового файла:", e)
+
+        if new_image_filename:
+            conn.execute('''
+                UPDATE frame
+                SET character_name = ?, description = ?, shoot_time = ?, location = ?, image_path = ?
+                WHERE id = ? AND project_id = ?
+            ''', (character_name, description, shoot_time, location, new_image_filename, frame_id, project_id))
+        else:
+            conn.execute('''
+                UPDATE frame
+                SET character_name = ?, description = ?, shoot_time = ?, location = ?
+                WHERE id = ? AND project_id = ?
+            ''', (character_name, description, shoot_time, location, frame_id, project_id))
+        
         conn.commit()
 
     return redirect(url_for('view_project', project_id=project_id))
@@ -348,7 +416,6 @@ def edit_user(user_id):
 @app.route('/user/<int:user_id>/delete', methods=['POST'])
 def delete_user(user_id):
     with get_db_connection() as conn:
-        # Удаляем проекты и кадры пользователя
         projects = conn.execute('SELECT id FROM project WHERE user_id = ?', (user_id,)).fetchall()
         for project in projects:
             conn.execute('DELETE FROM frame WHERE project_id = ?', (project[0],))

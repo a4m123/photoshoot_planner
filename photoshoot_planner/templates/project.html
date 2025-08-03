@@ -250,7 +250,7 @@ drawGrid();
         <div class="modal fade" id="editModal{{ frame[0] }}" tabindex="-1" aria-labelledby="editModalLabel{{ frame[0] }}" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
-            <form method="POST" action="{{ url_for('edit_frame', frame_id=frame[0], project_id=project[0]) }}">
+            <form method="POST" action="{{ url_for('edit_frame', frame_id=frame[0], project_id=project[0]) }}" enctype="multipart/form-data">
                 <div class="modal-header">
                 <h5 class="modal-title" id="editModalLabel{{ frame[0] }}">Редактировать карточку</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
@@ -274,7 +274,7 @@ drawGrid();
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Изображение</label>
-                        <input type="file" name="image" class="form-control">
+                        <input type="file" name="image" class="form-control" accept="image/*">
                         <small class="form-text text-muted">Оставьте пустым, если не хотите менять изображение</small>
                     </div>
                 </div>
